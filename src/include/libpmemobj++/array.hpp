@@ -43,6 +43,7 @@
 #include "libpmemobj++/detail/common.hpp"
 #include "libpmemobj++/persistent_ptr.hpp"
 #include "libpmemobj++/pext.hpp"
+#include "libpmemobj++/span.hpp"
 #include "libpmemobj.h"
 
 namespace pmem
@@ -50,8 +51,8 @@ namespace pmem
 
 namespace detail
 {
-// adds memory from offset to offset + count to tx
 
+// adds memory from offset to offset + count to tx
 inline void
 conditional_add_range_to_tx(const void *offset, std::size_t count)
 {
@@ -73,17 +74,6 @@ namespace obj
 
 /**
  * pmem::obj::array - persistent container based on std::array
- * diffrences:
- * - methods which return non-const reference to a element add this element
- *   to transaction, these methods are: operator[], at(), front(), back() 
- *   and non-memeber std::get<>
- * - functions mentioned above are not marked as constexpr and noexcept
- *   (as in c++17 standard)
- * - calls to functions which enable acess to all elements (begin(), data())
- *   add entire array to tx and are not marked noexcept
- * - extra function 'range' which adds requested range to transaction and
- *   returns pair of iterators
- * - swap in not marked noexcept
  */
 template<typename T, std::size_t N>
 struct array
@@ -255,14 +245,11 @@ struct array
 	}
 
 	/**
-	 * Adds requested range to transaction and returns pair of iterators
-	 * to access this range
-	 *
 	 * @param start start index of requested range
 	 * @param n number of elements in range
-	 * @return pair of iterators - to begin and end of requested range
+	 * @return span on requested range
 	 */
-	std::pair<iterator, iterator>
+	span<value_type, iterator>
 	range(size_type start, size_type n)
 	{
 		if (start + n >= N)
@@ -273,7 +260,7 @@ struct array
 		return {elems + start, elems + start + n};
 	}
 
-	constexpr const std::pair<const_iterator, const_iterator>
+	constexpr const span<value_type, iterator>
 	range(size_type start, size_type n) const
 	{
 		if (start + n >= N)
@@ -365,8 +352,6 @@ operator<=(const array<T, N> &lhs, const array<T, N> &rhs)
 
 namespace std
 {
-
-// Specialized algorithms [6.2.2.2].
 
 template<typename T, size_t N>
 inline void
