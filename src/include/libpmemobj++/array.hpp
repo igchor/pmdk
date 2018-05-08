@@ -32,7 +32,7 @@
 
 /**
  * @file
- * Array container for based on std::array
+ * Array container based on std::array
  */
 
 #ifndef ARRAY_HPP
@@ -49,42 +49,29 @@
 namespace pmem
 {
 
-namespace detail
-{
-
-// adds memory from offset to offset + count to tx
-inline void
-conditional_add_range_to_tx(const void *offset, std::size_t count)
-{
-	if (pmemobj_tx_stage() != TX_STAGE_WORK)
-		return;
-
-	// 'that' is not in any open pool
-	if (!pmemobj_pool_by_ptr(offset))
-		return;
-
-	if (pmemobj_tx_add_range_direct(offset, count))
-		throw transaction_error("Could not add an object to the"
-		" transaction.");
-}
-}
-
 namespace obj
 {
 
 /**
  * pmem::obj::array - persistent container based on std::array
+ *
+ * Implements all methods implemented by std::array and additional
+ * 'range' method for accessing specific part of the array.
+ *
+ * All methods which allow write access to specific element add this element
+ * to a transaction.
+ * All methods which return non-const iterator or non-const pointer to raw data
+ * add entire array to a transaction.
  */
-template<typename T, std::size_t N>
-struct array
-{
+template <typename T, std::size_t N>
+struct array {
 	typedef T value_type;
-	typedef value_type* pointer;
-	typedef const value_type* const_pointer;
-	typedef value_type& reference;
-	typedef const value_type& const_reference;
-	typedef value_type* iterator;
-	typedef const value_type* const_iterator;
+	typedef value_type *pointer;
+	typedef const value_type *const_pointer;
+	typedef value_type &reference;
+	typedef const value_type &const_reference;
+	typedef value_type *iterator;
+	typedef const value_type *const_iterator;
 	typedef std::size_t size_type;
 	typedef std::ptrdiff_t difference_type;
 	typedef std::reverse_iterator<iterator> reverse_iterator;
@@ -93,10 +80,63 @@ struct array
 	/* Support for zero-sized arrays */
 	value_type elems[N ? N : 1];
 
-	/**
-	 *  returns n-th element and conditionally
-	 *  adds this element to a transaction
-	 */
+	array() = default;
+
+	array(const array &other)
+	{
+		std::copy(other.cbegin(), other.cend(), begin());
+	}
+
+	array(const std::array<T, N> &other)
+	{
+		std::copy(other.cbegin(), other.cend(), begin());
+	}
+
+	array(array &&other)
+	{
+		std::move(other.begin(), other.end(), begin());
+	}
+
+	array(std::array<T, N> &&other)
+	{
+		std::move(other.begin(), other.end(), begin());
+	}
+
+	array &
+	operator=(const array &other)
+	{
+		std::copy(other.cbegin(), other.cend(), begin());
+		return *this;
+	}
+
+	array &
+	operator=(const std::array<T, N> &other)
+	{
+		std::copy(other.cbegin(), other.cend(), begin());
+		return *this;
+	}
+
+	array &
+	operator=(array &&other)
+	{
+		std::move(other.begin(), other.end(), begin());
+		return *this;
+	}
+
+	array &
+	operator=(std::array<T, N> &&other)
+	{
+		std::move(other.begin(), other.end(), begin());
+		return *this;
+	}
+
+	array &
+	operator=(std::initializer_list<value_type> ilist)
+	{
+		std::copy(ilist.begin(), ilist.end(), begin());
+		return *this;
+	}
+
 	reference
 	at(size_type n)
 	{
@@ -117,14 +157,12 @@ struct array
 		return elems[n];
 	}
 
-	reference
-	operator[](size_type n)
+	reference operator[](size_type n)
 	{
 		return at(n);
 	}
 
-	constexpr const_reference
-	operator[](size_type n) const
+	constexpr const_reference operator[](size_type n) const
 	{
 		return at(n);
 	}
@@ -245,6 +283,9 @@ struct array
 	}
 
 	/**
+	 * Adds requested range to a transaction
+	 * and returns span over this range
+	 *
 	 * @param start start index of requested range
 	 * @param n number of elements in range
 	 * @return span on requested range
@@ -253,7 +294,7 @@ struct array
 	range(size_type start, size_type n)
 	{
 		if (start + n >= N)
-			throw std::out_of_range("array::window");
+			throw std::out_of_range("array::range");
 
 		detail::conditional_add_range_to_tx(elems + start, n);
 
@@ -264,9 +305,15 @@ struct array
 	range(size_type start, size_type n) const
 	{
 		if (start + n >= N)
-			throw std::out_of_range("array::window");
+			throw std::out_of_range("array::range");
 
 		return {elems + start, elems + start + n};
+	}
+
+	constexpr const span<value_type, iterator>
+	crange(size_type start, size_type n) const
+	{
+		return range(start, n);
 	}
 
 	constexpr size_type
@@ -295,51 +342,50 @@ struct array
 	}
 
 	void
-	swap(array& other)
+	swap(array &other)
 	{
 		// calls to begin() will add both arrays to a transaction
 		std::swap_ranges(begin(), end(), other.begin());
 	}
-
 };
 
-template<typename T, std::size_t N>
+template <typename T, std::size_t N>
 inline bool
 operator==(const array<T, N> &lhs, const array<T, N> &rhs)
 {
 	return std::equal(lhs.cbegin(), lhs.cend(), rhs.cbegin());
 }
 
-template<typename T, std::size_t N>
+template <typename T, std::size_t N>
 inline bool
 operator!=(const array<T, N> &lhs, const array<T, N> &rhs)
 {
 	return !(lhs == rhs);
 }
 
-template<typename T, std::size_t N>
+template <typename T, std::size_t N>
 inline bool
 operator<(const array<T, N> &lhs, const array<T, N> &rhs)
 {
 	return std::lexicographical_compare(lhs.cbegin(), lhs.cend(),
-		rhs.cbegin(), rhs.cend());
+					    rhs.cbegin(), rhs.cend());
 }
 
-template<typename T, std::size_t N>
+template <typename T, std::size_t N>
 inline bool
 operator>(const array<T, N> &lhs, const array<T, N> &rhs)
 {
 	return rhs < lhs;
 }
 
-template<typename T, std::size_t N>
+template <typename T, std::size_t N>
 inline bool
 operator>=(const array<T, N> &lhs, const array<T, N> &rhs)
 {
 	return !(lhs < rhs);
 }
 
-template<typename T, std::size_t N>
+template <typename T, std::size_t N>
 inline bool
 operator<=(const array<T, N> &lhs, const array<T, N> &rhs)
 {
@@ -353,63 +399,60 @@ operator<=(const array<T, N> &lhs, const array<T, N> &rhs)
 namespace std
 {
 
-template<typename T, size_t N>
+template <typename T, size_t N>
 inline void
 swap(pmem::obj::array<T, N> &lhs, pmem::obj::array<T, N> &rhs)
 {
 	lhs.swap(rhs);
 }
 
-template<size_t I, typename T, size_t N >
-T&
+template <size_t I, typename T, size_t N>
+T &
 get(pmem::obj::array<T, N> &a)
 {
 	static_assert(I < N,
-		"Index out of bounds in std::get<> (pmem::obj::array)");
+		      "Index out of bounds in std::get<> (pmem::obj::array)");
 	return a.at(I);
 }
 
-template<size_t I, typename T, size_t N >
-T&&
+template <size_t I, typename T, size_t N>
+T &&
 get(pmem::obj::array<T, N> &&a)
 {
 	static_assert(I < N,
-		"Index out of bounds in std::get<> (pmem::obj::array)");
+		      "Index out of bounds in std::get<> (pmem::obj::array)");
 	return move(a.at(I));
 }
 
-template<size_t I, typename T, size_t N >
-constexpr const T&
+template <size_t I, typename T, size_t N>
+constexpr const T &
 get(const pmem::obj::array<T, N> &a) noexcept
 {
 	static_assert(I < N,
-		"Index out of bounds in std::get<> (pmem::obj::array)");
+		      "Index out of bounds in std::get<> (pmem::obj::array)");
 	return a.at(I);
 }
 
-template<size_t I, typename T, size_t N >
-constexpr const T&&
+template <size_t I, typename T, size_t N>
+constexpr const T &&
 get(const pmem::obj::array<T, N> &&a) noexcept
 {
 	static_assert(I < N,
-		"Index out of bounds in std::get<> (pmem::obj::array)");
+		      "Index out of bounds in std::get<> (pmem::obj::array)");
 	return move(a.at(I));
 }
 
 // Tuple interface to class template array.
-template<typename T, size_t N>
-class tuple_size<pmem::obj::array<T, N>> :
-public std::integral_constant<size_t, N>
-{
+template <typename T, size_t N>
+class tuple_size<pmem::obj::array<T, N>>
+	: public std::integral_constant<size_t, N> {
 };
 
-template< size_t I, class T, size_t N >
-struct tuple_element<I, pmem::obj::array<T, N>>
-{
+template <size_t I, class T, size_t N>
+struct tuple_element<I, pmem::obj::array<T, N>> {
 	using type = T;
 };
 
 } /* namespace std */
 
 #endif /* ARRAY_HPP */
-

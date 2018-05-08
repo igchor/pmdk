@@ -33,28 +33,28 @@
 #ifndef SPAN_HPP
 #define SPAN_HPP
 
-
 namespace pmem
 {
 
 namespace obj
 {
 
-template<typename T, typename Iterator>
-class span
-{
+/**
+ * pmem::obj::span - provides interface to access sequence of objects
+ */
+template <typename T, typename Iterator>
+class span {
 public:
 	typedef std::size_t size_type;
-	typedef T& reference;
+	typedef T &reference;
 
-	constexpr span(Iterator begin, Iterator end) :
-		it_begin(begin), it_end(end)
+	constexpr span(Iterator begin, Iterator end)
+	    : it_begin(begin), it_end(end)
 	{
-
 	}
 
-	span<T, Iterator>&
-	operator=(const span<T, Iterator>& other) noexcept = default;
+	span<T, Iterator> &
+	operator=(const span<T, Iterator> &other) noexcept = default;
 
 	constexpr Iterator
 	begin() const noexcept
@@ -104,8 +104,7 @@ public:
 		return it_end;
 	}
 
-	constexpr reference
-	operator[](size_type idx) const
+	constexpr reference operator[](size_type idx) const
 	{
 		return *(it_begin + idx);
 	}
@@ -120,11 +119,8 @@ private:
 	Iterator it_begin, it_end;
 };
 
-
 } /* namespace obj */
 
 } /* namespace pmem */
 
-
 #endif /* SPAN_HPP */
-
