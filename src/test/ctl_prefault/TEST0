@@ -39,22 +39,35 @@ require_test_type short
 
 setup
 
-# create, don't prefault
-expect_normal_exit ./ctl_prefault$EXESUFFIX obj $DIR/testfile1 0 0
-pagefault_create_baseline=`cat out$UNITTEST_NUM.log | sed -n '3p'`
+pool_size_type=0
+
+while true ; do
+	rm -f $DIR/testfile1
+
+	# create, don't prefault
+	expect_normal_exit ./ctl_prefault$EXESUFFIX obj $DIR/testfile1 0 0 $pool_size_type
+	pagefault_create_baseline=`cat out$UNITTEST_NUM.log | sed -n '3p'`
+
+	# if value is greater than 1, pool size is greater than used memory page size
+	if [ ${pagefault_create_baseline} -gt 1 ]; then
+		break
+	fi
+
+	pool_size_type=$((pool_size_type + 1))
+done
 
 # open, don't prefault
-expect_normal_exit ./ctl_prefault$EXESUFFIX obj $DIR/testfile1 0 1
+expect_normal_exit ./ctl_prefault$EXESUFFIX obj $DIR/testfile1 0 1 $pool_size_type
 pagefault_open_baseline=`cat out$UNITTEST_NUM.log | sed -n '3p'`
 
 rm -f $DIR/testfile1
 
 # create, prefault
-expect_normal_exit ./ctl_prefault$EXESUFFIX obj $DIR/testfile1 2 0
+expect_normal_exit ./ctl_prefault$EXESUFFIX obj $DIR/testfile1 2 0 $pool_size_type
 pagefault_create_prefault=`cat out$UNITTEST_NUM.log | sed -n '3p'`
 
 # open, prefault
-expect_normal_exit ./ctl_prefault$EXESUFFIX obj $DIR/testfile1 1 1
+expect_normal_exit ./ctl_prefault$EXESUFFIX obj $DIR/testfile1 1 1 $pool_size_type
 pagefault_open_prefault=`cat out$UNITTEST_NUM.log | sed -n '3p'`
 
 rm -f $DIR/testfile1

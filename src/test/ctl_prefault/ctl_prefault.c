@@ -52,6 +52,27 @@ typedef char vec_t;
 typedef unsigned char vec_t;
 #endif
 
+/*
+ * Pool size, which is greater than 1GB.
+ * Used to test prefaulting when 1GB huge pages are used.
+ *
+ * This is needed to ensure that there is at least one page,
+ * not accessed by create (without prefault).
+ */
+#define POOL_SIZE_HUGE_1GB ((size_t)(1024 * 1024 * 1024 + 4096))
+
+/*
+ * Pool size, which is greater than 2MB.
+ * Used to test prefaulting when 2MB huge pages are used.
+ */
+#define POOL_SIZE_HUGE_2MB ((size_t)(2 * 1024 * 1024 + 4096))
+
+enum pool_size_type {
+	SMALL,
+	HUGE_2MB,
+	HUGE_1GB
+};
+
 typedef int (*fun)(void *, const char *, void *);
 
 /*
@@ -121,20 +142,28 @@ count_resident_pages(void *pool, size_t length)
  * test_obj -- open/create PMEMobjpool
  */
 static void
-test_obj(const char *path, int open)
+test_obj(const char *path, int open, enum pool_size_type pool_size)
 {
 	PMEMobjpool *pop;
+
+	size_t size;
+	if (pool_size == HUGE_1GB)
+		size = POOL_SIZE_HUGE_1GB;
+	else
+		size = PMEMOBJ_MIN_POOL;
+
+
 	if (open) {
 		if ((pop = pmemobj_open(path, LAYOUT)) == NULL)
 			UT_FATAL("!pmemobj_open: %s", path);
 	} else {
 		if ((pop = pmemobj_create(path, LAYOUT,
-				PMEMOBJ_MIN_POOL,
+				size,
 				S_IWUSR | S_IRUSR)) == NULL)
 			UT_FATAL("!pmemobj_create: %s", path);
 	}
 
-	size_t resident_pages = count_resident_pages(pop, PMEMOBJ_MIN_POOL);
+	size_t resident_pages = count_resident_pages(pop, size);
 
 	pmemobj_close(pop);
 
@@ -144,19 +173,26 @@ test_obj(const char *path, int open)
  * test_blk -- open/create PMEMblkpool
  */
 static void
-test_blk(const char *path, int open)
+test_blk(const char *path, int open, enum pool_size_type pool_size)
 {
 	PMEMblkpool *pbp;
+
+	size_t size;
+	if (pool_size == HUGE_1GB)
+		size = POOL_SIZE_HUGE_1GB;
+	else
+		size = PMEMBLK_MIN_POOL;
+
 	if (open) {
 		if ((pbp = pmemblk_open(path, BSIZE)) == NULL)
 			UT_FATAL("!pmemblk_open: %s", path);
 	} else {
-		if ((pbp = pmemblk_create(path, BSIZE, PMEMBLK_MIN_POOL,
+		if ((pbp = pmemblk_create(path, BSIZE, size,
 			S_IWUSR | S_IRUSR)) == NULL)
 			UT_FATAL("!pmemblk_create: %s", path);
 	}
 
-	size_t resident_pages = count_resident_pages(pbp, PMEMBLK_MIN_POOL);
+	size_t resident_pages = count_resident_pages(pbp, size);
 
 	pmemblk_close(pbp);
 
@@ -166,19 +202,28 @@ test_blk(const char *path, int open)
  * test_log -- open/create PMEMlogpool
  */
 static void
-test_log(const char *path, int open)
+test_log(const char *path, int open, enum pool_size_type pool_size)
 {
 	PMEMlogpool *plp;
+
+	size_t size;
+	if (pool_size == SMALL)
+		size = PMEMLOG_MIN_POOL;
+	else if (pool_size == HUGE_2MB)
+		size = POOL_SIZE_HUGE_2MB;
+	else
+		size = POOL_SIZE_HUGE_1GB;
+
 	if (open) {
 		if ((plp = pmemlog_open(path)) == NULL)
 			UT_FATAL("!pmemlog_open: %s", path);
 	} else {
-		if ((plp = pmemlog_create(path, PMEMLOG_MIN_POOL,
+		if ((plp = pmemlog_create(path, size,
 				S_IWUSR | S_IRUSR)) == NULL)
 			UT_FATAL("!pmemlog_create: %s", path);
 	}
 
-	size_t resident_pages = count_resident_pages(plp, PMEMLOG_MIN_POOL);
+	size_t resident_pages = count_resident_pages(plp, size);
 
 	pmemlog_close(plp);
 
@@ -187,7 +232,7 @@ test_log(const char *path, int open)
 
 #define USAGE() do {\
 	UT_FATAL("usage: %s file-name type(obj/blk/log) prefault(0/1/2) "\
-			"open(0/1)", argv[0]);\
+			"open(0/1) pool_size(0/1/2)", argv[0]);\
 } while (0)
 
 int
@@ -195,26 +240,30 @@ main(int argc, char *argv[])
 {
 	START(argc, argv, "ctl_prefault");
 
-	if (argc != 5)
+	if (argc != 6)
 		USAGE();
 
 	char *type = argv[1];
 	const char *path = argv[2];
 	int prefault = atoi(argv[3]);
 	int open = atoi(argv[4]);
+	int pool_size = atoi(argv[5]);
+
+	if (pool_size > 2)
+		UT_FATAL("pool_size must be 0/1/2");
 
 	if (strcmp(type, OBJ_STR) == 0) {
 		prefault_fun(prefault, (fun)pmemobj_ctl_get,
 				(fun)pmemobj_ctl_set);
-		test_obj(path, open);
+		test_obj(path, open, pool_size);
 	} else if (strcmp(type, BLK_STR) == 0) {
 		prefault_fun(prefault, (fun)pmemblk_ctl_get,
 				(fun)pmemblk_ctl_set);
-		test_blk(path, open);
+		test_blk(path, open, pool_size);
 	} else if (strcmp(type, LOG_STR) == 0) {
 		prefault_fun(prefault, (fun)pmemlog_ctl_get,
 				(fun)pmemlog_ctl_set);
-		test_log(path, open);
+		test_log(path, open, pool_size);
 	} else
 		USAGE();
 
