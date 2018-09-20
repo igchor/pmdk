@@ -156,7 +156,7 @@ util_file_exists(const char *path)
  * util_fd_is_device_dax -- check whether the file descriptor is associated
  *                          with a device dax
  */
-int
+static int
 util_fd_is_device_dax(int fd)
 {
 	LOG(3, "fd %d", fd);
@@ -243,6 +243,94 @@ out:
 }
 
 /*
+ * get_file_type_internal -- (internal) checks whether stat structure describes
+ *			 device dax or a normal file
+ */
+static enum file_type
+get_file_type_internal(os_stat_t *st)
+{
+#ifdef _WIN32
+	return TYPE_NORMAL;
+#else
+	if (!S_ISCHR(st->st_mode)) {
+		LOG(4, "not a character device");
+		return TYPE_NORMAL;
+	}
+
+	char spath[PATH_MAX];
+	snprintf(spath, PATH_MAX, "/sys/dev/char/%u:%u/subsystem",
+		os_major(st->st_rdev), os_minor(st->st_rdev));
+
+	LOG(4, "device subsystem path \"%s\"", spath);
+
+	char npath[PATH_MAX];
+	char *rpath = realpath(spath, npath);
+	if (rpath == NULL) {
+		ERR("!realpath \"%s\"", spath);
+		return OTHER_ERROR;
+	}
+
+	if (strcmp(DEVICE_DAX_PREFIX, rpath) != 0) {
+		LOG(3, "%s path does not match device dax prefix path", rpath);
+		errno = EINVAL;
+		return OTHER_ERROR;
+	}
+
+	return TYPE_DEVDAX;
+#endif
+}
+
+/*
+ * util_fd_get_type -- checks whether a file descriptor is associated
+ *		       with a device dax or a normal file
+ */
+enum file_type
+util_fd_get_type(int fd)
+{
+	LOG(3, "fd %d", fd);
+
+	os_stat_t st;
+
+	if (os_fstat(fd, &st) < 0) {
+		ERR("!fstat");
+		return OTHER_ERROR;
+	}
+
+	return get_file_type_internal(&st);
+}
+
+/*
+ * util_file_get_type -- checks whether the path points to a device dax,
+ *			 normal file or non-existent file
+ */
+enum file_type
+util_file_get_type(const char *path)
+{
+	LOG(3, "path \"%s\"", path);
+
+	if (path == NULL) {
+		ERR("invalid (NULL) path");
+		return OTHER_ERROR;
+	}
+
+	int exists = util_file_exists(path);
+	if (exists < 0)
+		return OTHER_ERROR;
+
+	if (!exists)
+		return TYPE_NORMAL;
+
+	os_stat_t st;
+
+	if (os_stat(path, &st) < 0) {
+		ERR("!stat");
+		return OTHER_ERROR;
+	}
+
+	return get_file_type_internal(&st);
+}
+
+/*
  * util_file_get_size -- returns size of a file
  */
 ssize_t
@@ -250,8 +338,12 @@ util_file_get_size(const char *path)
 {
 	LOG(3, "path \"%s\"", path);
 
+	int file_type = util_file_get_type(path);
+	if (file_type < 0)
+		return -1;
+
 #ifndef _WIN32
-	if (util_file_is_device_dax(path)) {
+	if (file_type == TYPE_DEVDAX) {
 		return device_dax_size(path);
 	}
 #endif
@@ -370,7 +462,11 @@ util_file_pwrite(const char *path, const void *buffer, size_t size,
 	LOG(3, "path \"%s\" buffer %p size %zu offset %ju",
 			path, buffer, size, offset);
 
-	if (!util_file_is_device_dax(path)) {
+	enum file_type type = util_file_get_type(path);
+	if (type < 0)
+		return -1;
+
+	if (type == TYPE_NORMAL) {
 		int fd = util_file_open(path, NULL, 0, O_RDWR);
 		if (fd < 0) {
 			LOG(2, "failed to open file \"%s\"", path);
@@ -419,7 +515,11 @@ util_file_pread(const char *path, void *buffer, size_t size,
 	LOG(3, "path \"%s\" buffer %p size %zu offset %ju",
 			path, buffer, size, offset);
 
-	if (!util_file_is_device_dax(path)) {
+	enum file_type type = util_file_get_type(path);
+	if (type < 0)
+		return -1;
+
+	if (type == TYPE_NORMAL) {
 		int fd = util_file_open(path, NULL, 0, O_RDONLY);
 		if (fd < 0) {
 			LOG(2, "failed to open file \"%s\"", path);
@@ -591,7 +691,11 @@ util_unlink(const char *path)
 {
 	LOG(3, "path \"%s\"", path);
 
-	if (util_file_is_device_dax(path)) {
+	enum file_type type = util_file_get_type(path);
+	if (type < 0)
+		return -1;
+
+	if (type == TYPE_DEVDAX) {
 		return util_file_zero(path, 0, DEVICE_DAX_ZERO_LEN);
 	} else {
 #ifdef _WIN32
