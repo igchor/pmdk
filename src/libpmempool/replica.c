@@ -121,7 +121,7 @@ replica_remove_part(struct pool_set *set, unsigned repn, unsigned partn)
 
 	int olderrno = errno;
 	enum file_type type = util_file_get_type(part->path);
-	if (type < 0)
+	if (type == OTHER_ERROR)
 		return -1;
 
 	/* if the part is a device dax, clear its bad blocks */
@@ -133,12 +133,10 @@ replica_remove_part(struct pool_set *set, unsigned repn, unsigned partn)
 		return -1;
 	}
 
-	if (util_unlink(part->path)) {
-		if (errno != ENOENT) {
-			ERR("!removing part %u from replica %u failed",
-					partn, repn);
-			return -1;
-		}
+	if (type == TYPE_NORMAL && util_unlink(part->path)) {
+		ERR("!removing part %u from replica %u failed",
+				partn, repn);
+		return -1;
 	}
 
 	errno = olderrno;

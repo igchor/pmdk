@@ -65,7 +65,7 @@ os_extents_common(const char *path, struct extents *exts,
 
 	enum file_type type = util_fd_get_type(fd);
 	if (type < 0)
-		return -1;
+		goto error_close;
 
 	struct stat st;
 	if (fstat(fd, &st) < 0) {

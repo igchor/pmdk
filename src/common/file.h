@@ -79,7 +79,6 @@ int util_file_dir_next(struct dir_handle *a, struct file_info *info);
 int util_file_dir_close(struct dir_handle *a);
 int util_file_dir_remove(const char *path);
 int util_file_exists(const char *path);
-int util_file_is_device_dax(const char *path);
 enum file_type util_fd_get_type(int fd);
 enum file_type util_file_get_type(const char *path);
 int util_ddax_region_find(const char *path);

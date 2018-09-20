@@ -153,96 +153,6 @@ util_file_exists(const char *path)
 }
 
 /*
- * util_fd_is_device_dax -- check whether the file descriptor is associated
- *                          with a device dax
- */
-static int
-util_fd_is_device_dax(int fd)
-{
-	LOG(3, "fd %d", fd);
-
-#ifdef _WIN32
-	return 0;
-#else
-	os_stat_t st;
-	int olderrno = errno;
-	int ret = 0;
-
-	if (fd < 0) {
-		ERR("invalid file descriptor %d", fd);
-		goto out;
-	}
-
-	if (os_fstat(fd, &st) < 0) {
-		ERR("!fstat");
-		goto out;
-	}
-
-	if (!S_ISCHR(st.st_mode)) {
-		LOG(4, "not a character device");
-		goto out;
-	}
-
-	char spath[PATH_MAX];
-	snprintf(spath, PATH_MAX, "/sys/dev/char/%u:%u/subsystem",
-		os_major(st.st_rdev), os_minor(st.st_rdev));
-
-	LOG(4, "device subsystem path \"%s\"", spath);
-
-	char npath[PATH_MAX];
-	char *rpath = realpath(spath, npath);
-	if (rpath == NULL) {
-		ERR("!realpath \"%s\"", spath);
-		goto out;
-	}
-
-	ret = strcmp(DEVICE_DAX_PREFIX, rpath) == 0;
-
-out:
-	errno = olderrno;
-	LOG(4, "returning %d", ret);
-	return ret;
-#endif
-
-}
-
-/*
- * util_file_is_device_dax -- checks whether the path points to a device dax
- */
-int
-util_file_is_device_dax(const char *path)
-{
-	LOG(3, "path \"%s\"", path);
-
-#ifdef _WIN32
-	return 0;
-#else
-	int olderrno = errno;
-	int ret = 0;
-
-	if (path == NULL) {
-		ERR("invalid (NULL) path");
-		goto out;
-	}
-
-	int fd = os_open(path, O_RDONLY);
-	if (fd < 0) {
-		/* not a problem - 'path' may point to non existent file */
-		/* LOG(4, "!open \"%s\"", path); */
-		goto out;
-	}
-
-	ret = util_fd_is_device_dax(fd);
-	(void) os_close(fd);
-
-out:
-	errno = olderrno;
-	LOG(4, "returning %d", ret);
-	return ret;
-#endif
-}
-
-/*
  * get_file_type_internal -- (internal) checks whether stat structure describes
  *			 device dax or a normal file
  */
@@ -318,7 +228,7 @@ util_file_get_type(const char *path)
 		return OTHER_ERROR;
 
 	if (!exists)
-		return TYPE_NORMAL;
+		return NOT_EXISTS;
 
 	os_stat_t st;
 
