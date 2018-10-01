@@ -1,0 +1,6 @@
+Persistent Memory Development Kit
+
+This is src/test/win_mmap_dtor/README.
+
+This directory contains a unit test for destructor of module which
+contains mmap implementation for windows.
