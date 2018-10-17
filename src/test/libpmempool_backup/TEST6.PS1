@@ -44,6 +44,9 @@ setup
 
 . ./common.PS1
 
+$Env:PMEM_LOG_LEVEL=15
+$Env:PMEMPOOL_LOG_LEVEL=15
+
 for ($i=0; $i -lt $POOL_TYPES.Count; $i++ ) {
 	backup_cleanup
 

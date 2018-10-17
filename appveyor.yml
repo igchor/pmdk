@@ -56,10 +56,9 @@ test_script:
         echo "`$Env:UNITTEST_NO_ABORT_MSG = `"1`"" >> testconfig.ps1
         echo "`$Env:TM = `"1`"" >> testconfig.ps1
         if ($Env:CONFIGURATION -eq "Debug") {
-            ./RUNTESTS.ps1 -b debug -o 4m
+            ./runloop.PS1 -build debug -ErrorAction SilentlyContinue
         }
         if ($Env:CONFIGURATION -eq "Release") {
-            ./RUNTESTS.ps1 -b nondebug -o 4m
         }
     }
 
