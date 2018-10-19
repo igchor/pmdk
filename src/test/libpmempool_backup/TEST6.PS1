@@ -40,6 +40,8 @@ require_test_type medium
 
 require_fs_type pmem non-pmem
 
+#require_no_unicode
+
 setup
 
 . ./common.PS1

@@ -12,7 +12,7 @@ while ($True)
 		echo "---------------------------------------------------"
 		cat libpmempoo_backup/prep6.log
 		echo "~~~~~~~~~~~~~~!!!!!!!!!!!!!!!!!~~~~~~~~~~~~~~~~~~~~"
-		Get-ChildItem "C:\temp\\test_libpmempool_backup6ðŸ˜˜â â §â â ‡É—PMDKÓœâ¥ºðŸ™‹\pool.part4_backup" | % {[int]($_.length)}
+		Get-ChildItem "C:\temp\\test_libpmempool_backup6😘⠝⠧⠍⠇ɗPMDKӜ⥺🙋\pool.part4_backup" | % {[int]($_.length)}
 		return
 	}
 }
