@@ -156,7 +156,7 @@ function truncate {
     [int64]$size_in_bytes = (convert_to_bytes $size)
 
     if (-Not (Test-Path $fname)) {
-        & $SPARSEFILE $fname $size_in_bytes 2>&1 1>> $Env:PREP_LOG_FILE
+        & $SPARSEFILE $fname $size_in_bytes -v 1>> $Env:PREP_LOG_FILE
 
     } else {
         $file = new-object System.IO.FileStream $fname, Open, ReadWrite

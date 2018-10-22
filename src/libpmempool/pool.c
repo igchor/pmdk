@@ -761,6 +761,8 @@ pool_set_part_copy(struct pool_set_part *dpart, struct pool_set_part *spart,
 		return -1;
 	}
 
+	LOG(3, "---------------- stat: %d", stat_buf.st_size);
+
 	size_t smapped = 0;
 	void *saddr = pmem_map_file(spart->path, 0, 0, S_IREAD, &smapped, NULL);
 	if (!saddr)

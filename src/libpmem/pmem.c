@@ -510,6 +510,7 @@ pmem_map_fileU(const char *path, size_t len, int flags,
 		 * Always set length of file to 'len'.
 		 * (May either extend or truncate existing file.)
 		 */
+		LOG(3, "truncate-------------------- %d", len);
 		if (os_ftruncate(fd, (os_off_t)len) != 0) {
 			ERR("!ftruncate");
 			goto err;
@@ -523,6 +524,7 @@ pmem_map_fileU(const char *path, size_t len, int flags,
 		}
 	} else {
 		ssize_t actual_size = util_file_get_size(path);
+		LOG(3, "get_actual_size-------------------- %d", actual_size);
 		if (actual_size < 0) {
 			ERR("stat %s: negative size", path);
 			errno = EINVAL;
