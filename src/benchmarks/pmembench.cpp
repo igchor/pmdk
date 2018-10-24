@@ -563,8 +563,9 @@ err:
  * pmembench_init_workers -- init benchmark's workers
  */
 static int
-pmembench_init_workers(struct benchmark_worker **workers,
-		       struct benchmark *bench, struct benchmark_args *args)
+pmembench_init_workers(struct benchmark_worker **workers, size_t nworkers,
+		       size_t n_ops, struct benchmark *bench,
+		       struct benchmark_args *args)
 {
 	size_t i;
 	int ncpus = 0;
@@ -577,7 +578,7 @@ pmembench_init_workers(struct benchmark_worker **workers,
 			return -1;
 	}
 
-	for (i = 0; i < args->n_threads; i++) {
+	for (i = 0; i < nworkers; i++) {
 		workers[i] = benchmark_worker_alloc();
 
 		if (args->thread_affinity) {
@@ -610,11 +611,11 @@ pmembench_init_workers(struct benchmark_worker **workers,
 		}
 
 		workers[i]->info.index = i;
-		workers[i]->info.nops = args->n_ops_per_thread;
+		workers[i]->info.nops = n_ops;
 		workers[i]->info.opinfo = (struct operation_info *)calloc(
-			args->n_ops_per_thread, sizeof(struct operation_info));
+			n_ops, sizeof(struct operation_info));
 		size_t j;
-		for (j = 0; j < args->n_ops_per_thread; j++) {
+		for (j = 0; j < n_ops; j++) {
 			workers[i]->info.opinfo[j].worker = &workers[i]->info;
 			workers[i]->info.opinfo[j].args = args;
 			workers[i]->info.opinfo[j].index = j;
@@ -687,29 +688,28 @@ compare_uint64t(const void *a1, const void *b1)
  * results_alloc -- prepare structure to store all benchmark results
  */
 static struct total_results *
-results_alloc(struct benchmark_args *args)
+results_alloc(size_t nrepeats, size_t nthreads, size_t nops)
 {
 	struct total_results *total =
 		(struct total_results *)malloc(sizeof(*total));
 	assert(total != nullptr);
-	total->nrepeats = args->repeats;
-	total->nthreads = args->n_threads;
-	total->nops = args->n_ops_per_thread;
-	total->res = (struct bench_results *)malloc(args->repeats *
-						    sizeof(*total->res));
+	total->nrepeats = nrepeats;
+	total->nthreads = nthreads;
+	total->nops = nops;
+	total->res =
+		(struct bench_results *)malloc(nrepeats * sizeof(*total->res));
 	assert(total->res != nullptr);
 
-	for (size_t i = 0; i < args->repeats; i++) {
+	for (size_t i = 0; i < nrepeats; i++) {
 		struct bench_results *res = &total->res[i];
-		assert(args->n_threads != 0);
+		assert(nthreads != 0);
 		res->thres = (struct thread_results **)malloc(
-			args->n_threads * sizeof(*res->thres));
+			nthreads * sizeof(*res->thres));
 		assert(res->thres != nullptr);
-		for (size_t j = 0; j < args->n_threads; j++) {
+		for (size_t j = 0; j < nthreads; j++) {
 			res->thres[j] = (struct thread_results *)malloc(
 				sizeof(*res->thres[j]) +
-				args->n_ops_per_thread *
-					sizeof(benchmark_time_t));
+				nops * sizeof(benchmark_time_t));
 			assert(res->thres[j] != nullptr);
 		}
 	}
@@ -1135,6 +1135,7 @@ pmembench_remove_file(const char *path)
  */
 static int
 pmembench_single_repeat(struct benchmark *bench, struct benchmark_args *args,
+			size_t n_threads, size_t n_ops,
 			struct bench_results *res)
 {
 	int ret = 0;
@@ -1177,7 +1178,8 @@ pmembench_single_repeat(struct benchmark *bench, struct benchmark_args *args,
 		args->n_threads * sizeof(struct benchmark_worker *));
 	assert(workers != nullptr);
 
-	if ((ret = pmembench_init_workers(workers, bench, args)) != 0) {
+	if ((ret = pmembench_init_workers(workers, n_threads, n_ops, bench,
+					  args)) != 0) {
 		goto out;
 	}
 
@@ -1218,7 +1220,8 @@ out:
  */
 int
 scale_up_min_exe_time(struct benchmark *bench, struct benchmark_args *args,
-		      struct total_results **total_results)
+		      struct total_results **total_results, size_t n_threads,
+		      size_t n_ops)
 {
 	const double min_exe_time = args->min_exe_time;
 	struct total_results *total_res = *total_results;
@@ -1227,7 +1230,7 @@ scale_up_min_exe_time(struct benchmark *bench, struct benchmark_args *args,
 		/*
 		 * run single benchmark repeat to probe execution time
 		 */
-		int ret = pmembench_single_repeat(bench, args,
+		int ret = pmembench_single_repeat(bench, args, n_threads, n_ops,
 						  &total_res->res[0]);
 		if (ret != 0)
 			return 1;
@@ -1239,12 +1242,14 @@ scale_up_min_exe_time(struct benchmark *bench, struct benchmark_args *args,
 		 * scale up number of operations to get assumed minimal
 		 * execution time
 		 */
-		args->n_ops_per_thread = (size_t)(
-			(double)args->n_ops_per_thread *
-			(min_exe_time + MIN_EXE_TIME_E) / total_res->total.min);
+		n_ops = (size_t)((double)n_ops *
+				 (min_exe_time + MIN_EXE_TIME_E) /
+				 total_res->total.min);
+		args->n_ops_per_thread = n_ops;
 
 		results_free(total_res);
-		*total_results = results_alloc(args);
+		*total_results = results_alloc(args->repeats, args->n_threads,
+					       args->n_ops_per_thread);
 		assert(*total_results != nullptr);
 		total_res = *total_results;
 		total_res->nrepeats = 1;
@@ -1416,32 +1421,35 @@ pmembench_run(struct pmembench *pb, struct benchmark *bench)
 			}
 		}
 
-		unsigned n_threads_copy = args->n_threads;
-		args->n_threads =
+		size_t n_threads =
 			!bench->info->multithread ? 1 : args->n_threads;
-		size_t n_ops_per_thread_copy = args->n_ops_per_thread;
-		args->n_ops_per_thread =
+		size_t n_ops =
 			!bench->info->multiops ? 1 : args->n_ops_per_thread;
+		size_t n_ops_per_thread_copy = args->n_ops_per_thread;
 
 		stats = (struct latency *)calloc(args->repeats,
 						 sizeof(struct latency));
 		assert(stats != nullptr);
-		workers_times = (double *)calloc(
-			args->n_threads * args->repeats, sizeof(double));
+		workers_times = (double *)calloc(n_threads * args->repeats,
+						 sizeof(double));
 		assert(workers_times != nullptr);
-		total_res = results_alloc(args);
+		total_res = results_alloc(args->repeats, args->n_threads,
+					  args->n_ops_per_thread);
 		assert(total_res != nullptr);
 
 		unsigned i = 0;
 		if (args->min_exe_time != 0 && bench->info->multiops) {
-			ret = scale_up_min_exe_time(bench, args, &total_res);
+			ret = scale_up_min_exe_time(bench, args, &total_res,
+						    n_threads, n_ops);
 			if (ret != 0)
 				goto out;
+			n_ops = args->n_ops_per_thread;
 			i = 1;
 		}
 
 		for (; i < args->repeats; i++) {
-			ret = pmembench_single_repeat(bench, args,
+			ret = pmembench_single_repeat(bench, args, n_threads,
+						      n_ops,
 						      &total_res->res[i]);
 			if (ret != 0)
 				goto out;
@@ -1451,7 +1459,6 @@ pmembench_run(struct pmembench *pb, struct benchmark *bench)
 		pmembench_print_results(bench, args, total_res);
 
 		args->n_ops_per_thread = n_ops_per_thread_copy;
-		args->n_threads = n_threads_copy;
 
 		results_free(total_res);
 		free(stats);
