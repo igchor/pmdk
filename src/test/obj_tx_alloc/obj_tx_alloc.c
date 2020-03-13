@@ -547,6 +547,18 @@ do_tx_xalloc_zerolen(PMEMobjpool *pop)
 
 	UT_ASSERT(TOID_IS_NULL(obj));
 
+	/* alloc 0 with pmemobj_tx_set_abort_on_failure called */
+	TX_BEGIN(pop) {
+		pmemobj_tx_set_abort_on_failure(0);
+		TOID_ASSIGN(obj, pmemobj_tx_alloc(0, TYPE_XABORT));
+	} TX_ONCOMMIT {
+		TOID_ASSIGN(obj, OID_NULL);
+	} TX_ONABORT {
+		UT_ASSERT(0); /* should not get to this point */
+	} TX_END
+
+	UT_ASSERT(TOID_IS_NULL(obj));
+
 	TOID(struct object) first;
 	TOID_ASSIGN(first, POBJ_FIRST_TYPE_NUM(pop, TYPE_XABORT));
 	UT_ASSERT(TOID_IS_NULL(first));

@@ -20,6 +20,7 @@
 struct tx_data {
 	PMDK_SLIST_ENTRY(tx_data) tx_entry;
 	jmp_buf env;
+	int abort_on_failure;
 };
 
 struct tx {
@@ -135,7 +136,10 @@ obj_tx_abort(int errnum, int user);
 static inline int
 obj_tx_fail_err(int errnum, uint64_t flags)
 {
-	if ((flags & POBJ_FLAG_TX_NO_ABORT) == 0)
+	struct tx *tx = get_tx();
+	struct tx_data *txd = PMDK_SLIST_FIRST(&tx->tx_entries);
+
+	if ((flags & POBJ_FLAG_TX_NO_ABORT) == 0 && txd->abort_on_failure)
 		obj_tx_abort(errnum, 0);
 	errno = errnum;
 	return errnum;
@@ -148,7 +152,10 @@ obj_tx_fail_err(int errnum, uint64_t flags)
 static inline PMEMoid
 obj_tx_fail_null(int errnum, uint64_t flags)
 {
-	if ((flags & POBJ_FLAG_TX_NO_ABORT) == 0)
+	struct tx *tx = get_tx();
+	struct tx_data *txd = PMDK_SLIST_FIRST(&tx->tx_entries);
+
+	if ((flags & POBJ_FLAG_TX_NO_ABORT) == 0 && txd->abort_on_failure)
 		obj_tx_abort(errnum, 0);
 	errno = errnum;
 	return OID_NULL;
@@ -719,12 +726,18 @@ pmemobj_tx_begin(PMEMobjpool *pop, jmp_buf env, ...)
 	int err = 0;
 	struct tx *tx = get_tx();
 
+	int abort_on_failure = 1;
+
 	if (tx->stage == TX_STAGE_WORK) {
 		ASSERTne(tx->lane, NULL);
 		if (tx->pop != pop) {
 			ERR("nested transaction for different pool");
 			return obj_tx_fail_err(EINVAL, 0);
 		}
+
+		/* inherits this value from parent transaction */
+		struct tx_data *txd = PMDK_SLIST_FIRST(&tx->tx_entries);
+		abort_on_failure = txd->abort_on_failure;
 
 		VALGRIND_START_TX;
 	} else if (tx->stage == TX_STAGE_NONE) {
@@ -763,6 +776,8 @@ pmemobj_tx_begin(PMEMobjpool *pop, jmp_buf env, ...)
 		memcpy(txd->env, env, sizeof(jmp_buf));
 	else
 		memset(txd->env, 0, sizeof(jmp_buf));
+
+	txd->abort_on_failure = abort_on_failure;
 
 	PMDK_SLIST_INSERT_HEAD(&tx->tx_entries, txd, tx_entry);
 
@@ -2051,6 +2066,44 @@ pmemobj_tx_get_user_data(void)
 	ASSERT_IN_TX(tx);
 
 	return tx->user_data;
+}
+
+/*
+ * pmemobj_tx_set_abort_on_failure -- enables or disables automatic transaction
+ * abort in case of an error
+ */
+void
+pmemobj_tx_set_abort_on_failure(int enable)
+{
+	LOG(3, "enable %d", enable);
+
+	struct tx *tx = get_tx();
+
+	ASSERT_IN_TX(tx);
+	ASSERT_TX_STAGE_WORK(tx);
+
+	struct tx_data *txd = PMDK_SLIST_FIRST(&tx->tx_entries);
+
+	txd->abort_on_failure = enable;
+}
+
+/*
+ * pmemobj_tx_get_abort_on_failure -- returns 1 if transaction automatically
+ * aborts on failure, 0 otherwise
+ */
+int
+pmemobj_tx_get_abort_on_failure(void)
+{
+	LOG(3, NULL);
+
+	struct tx *tx = get_tx();
+
+	ASSERT_IN_TX(tx);
+	ASSERT_TX_STAGE_WORK(tx);
+
+	struct tx_data *txd = PMDK_SLIST_FIRST(&tx->tx_entries);
+
+	return txd->abort_on_failure;
 }
 
 /*
