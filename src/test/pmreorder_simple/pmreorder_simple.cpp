@@ -29,6 +29,12 @@ struct three_field {
 	int flag;
 };
 
+three_field& operator|=(three_field &lhs, int)
+{
+	lhs.third_field |= 1;
+	return lhs;
+}
+
 /*
  * write_consistent -- (internal) write data in a consistent manner
  */
@@ -52,7 +58,7 @@ write_inconsistent(struct three_field *structp)
 	structp->flag = 1;
 	structp->first_field = 1;
 	structp->second_field = 1;
-	structp->third_field = 1;
+	(*structp) |= 1;
 	pmem_persist(structp, sizeof(*structp));
 }
 
@@ -86,7 +92,7 @@ main(int argc, char *argv[])
 	void *map = pmem_map_file(argv[2], 0, 0, 0, &size, NULL);
 	UT_ASSERTne(map, NULL);
 
-	struct three_field *structp = map;
+	struct three_field *structp = (struct three_field*) map;
 
 	char opt = argv[1][0];
 

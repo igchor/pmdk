@@ -529,6 +529,13 @@ objdir=.
 	$(call check-os, $@, $<)
 	$(create-deps)
 
+pmreorder_simple.o: pmreorder_simple.cpp $(MAKEFILE_DEPS)
+	$(call check-cstyle, $<)
+	@mkdir -p .deps
+	$(CXX) -MD -c $(CXXFLAGS) $(INCS) $(call coverage-path, $<) -o $@
+	$(call check-os, $@, $<)
+	$(create-deps)
+
 %.o: %.cpp $(MAKEFILE_DEPS)
 	$(call check-cstyle, $<)
 	@mkdir -p .deps
