@@ -735,7 +735,7 @@ pmemobj_tx_begin(PMEMobjpool *pop, jmp_buf env, ...)
 			return obj_tx_fail_err(EINVAL, 0);
 		}
 
-		/* inherits this value from parent transaction */
+		/* this tx inherits this value from parent transaction */
 		struct tx_data *txd = PMDK_SLIST_FIRST(&tx->tx_entries);
 		abort_on_failure = txd->abort_on_failure;
 

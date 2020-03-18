@@ -31,7 +31,7 @@ extern "C" {
 {\
 	jmp_buf _tx_env;\
 	enum pobj_tx_stage _stage;\
-	int _pobj_errno;\
+	int _pobj_errno = 0;\
 	if (setjmp(_tx_env)) {\
 		errno = pmemobj_tx_errno();\
 	} else {\
@@ -40,9 +40,10 @@ extern "C" {
 		if (_pobj_errno)\
 			errno = _pobj_errno;\
 	}\
-	while ((_stage = pmemobj_tx_stage()) != TX_STAGE_NONE) {\
-		switch (_stage) {\
-			case TX_STAGE_WORK:
+	if (!(_pobj_errno && pmemobj_tx_stage() == TX_STAGE_WORK)) {\
+		while ((_stage = pmemobj_tx_stage()) != TX_STAGE_NONE) {\
+			switch (_stage) {\
+				case TX_STAGE_WORK:
 
 #define TX_BEGIN_PARAM(pop, ...)\
 _POBJ_TX_BEGIN(pop, ##__VA_ARGS__)
@@ -62,32 +63,33 @@ _pobj_validate_cb_sig(pmemobj_tx_callback cb)
 #define TX_BEGIN(pop) _POBJ_TX_BEGIN(pop, TX_PARAM_NONE)
 
 #define TX_ONABORT\
-				pmemobj_tx_process();\
-				break;\
-			case TX_STAGE_ONABORT:
+					pmemobj_tx_process();\
+					break;\
+				case TX_STAGE_ONABORT:
 
 #define TX_ONCOMMIT\
-				pmemobj_tx_process();\
-				break;\
-			case TX_STAGE_ONCOMMIT:
+					pmemobj_tx_process();\
+					break;\
+				case TX_STAGE_ONCOMMIT:
 
 #define TX_FINALLY\
-				pmemobj_tx_process();\
-				break;\
-			case TX_STAGE_FINALLY:
+					pmemobj_tx_process();\
+					break;\
+				case TX_STAGE_FINALLY:
 
 #define TX_END\
-				pmemobj_tx_process();\
-				break;\
-			default:\
-				TX_ONABORT_CHECK;\
-				pmemobj_tx_process();\
-				break;\
+					pmemobj_tx_process();\
+					break;\
+				default:\
+					TX_ONABORT_CHECK;\
+					pmemobj_tx_process();\
+					break;\
+			}\
 		}\
+		_pobj_errno = pmemobj_tx_end();\
+		if (_pobj_errno)\
+			errno = _pobj_errno;\
 	}\
-	_pobj_errno = pmemobj_tx_end();\
-	if (_pobj_errno)\
-		errno = _pobj_errno;\
 }
 
 #define TX_ADD(o)\

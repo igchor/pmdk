@@ -520,6 +520,19 @@ test_tx_api(PMEMobjpool *pop)
 	} TX_END
 
 	UT_OUT("%s", pmemobj_errormsg());
+
+	errno = 0;
+	TX_BEGIN(pop) {
+		pmemobj_tx_set_abort_on_failure(0);
+		TX_BEGIN((PMEMobjpool *)(uintptr_t)7) {
+		} TX_ONABORT {
+			UT_ASSERT(0);
+		} TX_END
+		UT_ASSERT(errno == EINVAL);
+	} TX_END
+
+	UT_OUT("%s", pmemobj_errormsg());
+
 	TX_BEGIN(pop) {
 		pmemobj_tx_abort(ECANCELED);
 	} TX_END
