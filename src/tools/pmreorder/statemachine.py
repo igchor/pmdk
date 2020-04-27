@@ -6,7 +6,6 @@ import reorderengines
 from reorderexceptions import InconsistentFileException
 from reorderexceptions import NotSupportedOperationException
 
-
 class State:
     """
     The base class of all states.
@@ -297,14 +296,11 @@ class ReplayingState(State):
         # consider only flushed stores
         flushed_stores = list(filter(lambda x: x.flushed, self._ops_list))
 
-        # already flushed stores should be removed from the transitive list
-        common_part = list(set(flushed_stores) & set(State.trans_stores))
-        State.trans_stores = list(set(State.trans_stores) - set(common_part))
-
-        # do not add redundant stores
-        State.trans_stores = list(set(State.trans_stores) |
-                                  set(list(filter(lambda x: x.flushed is False,
-                                      self._ops_list))))
+        # Append not-flushed stores from this state to the transitive list.
+        # There might be multiple stores to the same address but that's fine,
+        # we have no guarantees about their order.
+        State.trans_stores = list(filter(lambda x: x.flushed is False,
+                                         self._ops_list))
 
         if self._context.test_on_barrier:
             for seq in self._context.reorder_engine.generate_sequence(
